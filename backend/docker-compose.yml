@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: budgetsmart-postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      POSTGRES_DB: ${DB_NAME:-budgetsmart}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=fr_FR.UTF-8"
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/main/resources/db/migration:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - budgetsmart-network
+
+  # Spring Boot Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: budgetsmart-backend
+    environment:
+      # Spring
+      SPRING_PROFILES_ACTIVE: ${APP_PROFILE:-dev}
+      APP_PORT: ${APP_PORT:-8080}
+      
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-budgetsmart}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-your-256-bit-secret-key-here-minimum-32-characters}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-604800000}
+      
+      # N8N
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/chat}
+      N8N_API_KEY: ${N8N_API_KEY:- }
+      N8N_TIMEOUT: ${N8N_TIMEOUT:-30000}
+      
+      # Claude API
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:- }
+      
+      # CORS
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5678}
+      CORS_ALLOWED_METHODS: ${CORS_ALLOWED_METHODS:-GET,POST,PUT,DELETE,OPTIONS}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - budgetsmart-network
+    restart: unless-stopped
+
+  # PgAdmin - PostgreSQL Management UI (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:7-alpine
+    container_name: budgetsmart-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@budgetsmart.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - budgetsmart-network
+    profiles:
+      - dev
+
+  # N8N Integration (Optional)
+  # Uncomment if you want to run n8n alongside
+  # n8n:
+  #   image: n8nio/n8n:latest
+  #   container_name: budgetsmart-n8n
+  #   ports:
+  #     - "5678:5678"
+  #   environment:
+  #     N8N_HOST: 0.0.0.0
+  #     N8N_PORT: 5678
+  #     N8N_PROTOCOL: http
+  #   volumes:
+  #     - n8n_data:/home/node/.n8n
+  #   networks:
+  #     - budgetsmart-network
+
+volumes:
+  postgres_data:
+    driver: local
+  # n8n_data:
+  #   driver: local
+
+networks:
+  budgetsmart-network:
+    driver: bridge
