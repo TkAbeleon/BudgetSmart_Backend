@@ -34,9 +34,9 @@ services:
       SPRING_PROFILES_ACTIVE: ${APP_PROFILE:-dev}
       APP_PORT: ${APP_PORT:-8080}
       
-      # Database
-      DB_HOST: postgres
-      DB_PORT: 5432
+      # Database (Utilise les variables du .env, par défaut Supabase ou externe)
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-budgetsmart}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
@@ -62,9 +62,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "${APP_PORT:-8080}:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
