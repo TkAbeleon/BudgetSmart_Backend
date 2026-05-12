@@ -23,6 +23,11 @@ public class BudgetSmartApplication {
         Dotenv dotenv = Dotenv.configure()
             .ignoreIfMissing()
             .load();
+        
+        // Set system properties for Spring Boot
+        dotenv.entries().forEach(entry -> {
+            System.setProperty(entry.getKey(), entry.getValue());
+        });
 
         SpringApplication.run(BudgetSmartApplication.class, args);
     }

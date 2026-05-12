@@ -1,10 +1,11 @@
 package com.budgetsmart.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.budgetsmart.security.JwtAuthenticationFilter;
+import com.budgetsmart.service.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -16,13 +17,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Configuration de Sécurité Spring Security
- * 
- * Gère :
- * - JWT Authentication Filter
- * - CORS Policy
- * - Endpoints publics vs privés
- * - CSRF Disable (JWT-based)
+ * Configuration Spring Security – JWT stateless
+ *
+ * IMPORTANT : context-path = /api  →  les requestMatchers ne doivent pas inclure /api
  */
 @Configuration
 @EnableWebSecurity
@@ -31,16 +28,27 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CorsConfig corsConfig;
+    private final CustomUserDetailsService userDetailsService;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                         CorsConfig corsConfig) {
+                         CorsConfig corsConfig,
+                         CustomUserDetailsService userDetailsService) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.corsConfig = corsConfig;
+        this.userDetailsService = userDetailsService;
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public DaoAuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder());
+        return provider;
     }
 
     @Bean
@@ -51,43 +59,25 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // CORS Configuration
-            .cors().configurationSource(corsConfig.corsConfigurationSource())
-            .and()
-
-            // CSRF Disabled (JWT-based, pas de sessions)
-            .csrf().disable()
-
-            // Session Management - STATELESS (JWT)
-            .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            .and()
-
-            // Authorization Rules
-            .authorizeRequests()
-                // Public endpoints
-                .antMatchers("/api/auth/register", "/api/auth/login").permitAll()
-                .antMatchers("/api/chat/webhook/n8n").permitAll()
-                .antMatchers("/api/health").permitAll()
-                .antMatchers("/api/swagger-ui.html", "/api/v3/api-docs", "/api/v3/api-docs/**").permitAll()
-                .antMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-
-                // Protected endpoints
+            .cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authenticationProvider(authenticationProvider())
+            .authorizeHttpRequests(auth -> auth
+                // Endpoints publics (sans préfixe /api car context-path l'enlève)
+                .requestMatchers("/auth/register", "/auth/login", "/auth/refresh").permitAll()
+                .requestMatchers("/chat/webhook/n8n", "/chat/webhook/test").permitAll()
+                .requestMatchers("/health", "/info").permitAll()
+                .requestMatchers("/swagger-ui.html", "/v3/api-docs", "/v3/api-docs/**").permitAll()
+                .requestMatchers("/swagger-ui/**").permitAll()
                 .anyRequest().authenticated()
-            .and()
+            )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((req, res, e) -> res.sendError(401, "Unauthorized"))
+                .accessDeniedHandler((req, res, e) -> res.sendError(403, "Forbidden"))
+            );
 
-            // Exception Handling
-            .exceptionHandling()
-                .authenticationEntryPoint((request, response, authException) -> {
-                    response.sendError(401, "Unauthorized");
-                })
-                .accessDeniedHandler((request, response, accessDeniedException) -> {
-                    response.sendError(403, "Access Denied");
-                });
-
-        // Add JWT Filter
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-
         return http.build();
     }
 }

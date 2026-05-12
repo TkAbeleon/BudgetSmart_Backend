@@ -2,7 +2,6 @@ package com.budgetsmart.config;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,10 +37,10 @@ public class JwtProvider {
      */
     public String generateToken(String email) {
         return Jwts.builder()
-            .setSubject(email)
-            .setIssuedAt(new Date())
-            .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
-            .signWith(getSigningKey(), SignatureAlgorithm.HS512)
+            .subject(email)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
+            .signWith(getSigningKey())
             .compact();
     }
 
@@ -50,10 +49,10 @@ public class JwtProvider {
      */
     public String generateRefreshToken(String email) {
         return Jwts.builder()
-            .setSubject(email)
-            .setIssuedAt(new Date())
-            .setExpiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
-            .signWith(getSigningKey(), SignatureAlgorithm.HS512)
+            .subject(email)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
+            .signWith(getSigningKey())
             .compact();
     }
 
@@ -62,11 +61,11 @@ public class JwtProvider {
      */
     public String extractEmail(String token) {
         try {
-            Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+            Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
             return claims.getSubject();
         } catch (Exception e) {
             log.error("Erreur lors de l'extraction de l'email du token", e);
@@ -79,10 +78,10 @@ public class JwtProvider {
      */
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+            Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token);
+                .parseSignedClaims(token);
             return true;
         } catch (Exception e) {
             log.debug("Token invalide : {}", e.getMessage());
@@ -95,11 +94,11 @@ public class JwtProvider {
      */
     public boolean isTokenExpired(String token) {
         try {
-            Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+            Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
             return claims.getExpiration().before(new Date());
         } catch (Exception e) {
             return true;
@@ -118,10 +117,24 @@ public class JwtProvider {
      * Extraire les claims du token
      */
     public Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder()
-            .setSigningKey(getSigningKey())
+        return Jwts.parser()
+            .verifyWith(getSigningKey())
             .build()
-            .parseClaimsJws(token)
-            .getBody();
+            .parseSignedClaims(token)
+            .getPayload();
+    }
+
+    /**
+     * Obtenir la durée d'expiration du token en millisecondes
+     */
+    public long getExpiration() {
+        return jwtExpiration;
+    }
+
+    /**
+     * Obtenir la durée d'expiration du refresh token en millisecondes
+     */
+    public long getRefreshExpiration() {
+        return refreshTokenExpiration;
     }
 }
