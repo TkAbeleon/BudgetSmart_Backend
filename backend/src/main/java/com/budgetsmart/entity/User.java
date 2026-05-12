@@ -7,7 +7,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Entité Utilisateur - alignée avec la table SQL `users`
+ * Entité User — alignée exactement avec la table SQL locale `users`
+ * Colonnes : id (int), name, email, password, monthly_budget, created_at
  */
 @Entity
 @Table(name = "users")
@@ -19,49 +20,29 @@ public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
-    @Column(unique = true, nullable = false, length = 255)
+    @Column(nullable = false, length = 100)
+    private String name;
+
+    @Column(unique = true, nullable = false, length = 150)
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String password;
 
-    @Column(name = "first_name", length = 100)
-    private String firstName;
-
-    @Column(name = "last_name", length = 100)
-    private String lastName;
-
-    @Column(length = 20)
-    private String phone;
-
     @Builder.Default
-    @Column(nullable = false)
-    private boolean active = true;
+    @Column(name = "monthly_budget", precision = 12, scale = 2)
+    private BigDecimal monthlyBudget = BigDecimal.ZERO;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        if (createdAt == null) createdAt = LocalDateTime.now();
     }
 
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
-
-    /** Nom complet pour commodité */
-    public String getFullName() {
-        if (firstName == null && lastName == null) return email;
-        return String.join(" ",
-            firstName != null ? firstName : "",
-            lastName  != null ? lastName  : "").trim();
-    }
+    /** Commodité */
+    public String getFullName() { return name != null ? name : email; }
 }

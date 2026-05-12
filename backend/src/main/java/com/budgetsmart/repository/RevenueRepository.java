@@ -14,26 +14,16 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface RevenueRepository extends JpaRepository<Revenue, Long> {
-
-    List<Revenue> findByUserIdAndDateBetween(Long userId, LocalDate start, LocalDate end);
-
-    List<Revenue> findByUserIdAndCategoryId(Long userId, Long categoryId);
+public interface RevenueRepository extends JpaRepository<Revenue, Integer> {
+    List<Revenue> findByUserIdAndDateBetween(Integer userId, LocalDate start, LocalDate end);
+    List<Revenue> findByUserIdAndCategoryId(Integer userId, Integer categoryId);
+    Page<Revenue> findByUserId(Integer userId, Pageable pageable);
+    Optional<Revenue> findFirstByUserIdOrderByDateDesc(Integer userId);
+    long countByUserIdAndDateBetween(Integer userId, LocalDate start, LocalDate end);
 
     @Query("SELECT COALESCE(SUM(r.amount), 0) FROM Revenue r WHERE r.user.id = :userId AND r.date BETWEEN :start AND :end")
-    BigDecimal sumByUserIdAndDateBetween(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
-
-    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM Revenue r WHERE r.user.id = :userId AND r.category.id = :categoryId")
-    BigDecimal sumByUserIdAndCategoryId(@Param("userId") Long userId, @Param("categoryId") Long categoryId);
-
-    Page<Revenue> findByUserId(Long userId, Pageable pageable);
-
-    List<Revenue> findByUserIdAndCategoryIdAndDateBetween(Long userId, Long categoryId, LocalDate start, LocalDate end);
-
-    long countByUserIdAndDateBetween(Long userId, LocalDate start, LocalDate end);
-
-    Optional<Revenue> findFirstByUserIdOrderByDateDesc(Long userId);
+    BigDecimal sumByUserIdAndDateBetween(@Param("userId") Integer userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
     @Query("SELECT COALESCE(AVG(r.amount), 0) FROM Revenue r WHERE r.user.id = :userId AND r.date BETWEEN :start AND :end")
-    BigDecimal averageByUserIdAndDateBetween(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
+    BigDecimal averageByUserIdAndDateBetween(@Param("userId") Integer userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 }

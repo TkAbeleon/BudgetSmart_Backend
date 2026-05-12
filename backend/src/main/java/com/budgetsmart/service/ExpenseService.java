@@ -1,21 +1,29 @@
 package com.budgetsmart.service;
 
-import com.budgetsmart.dto.BudgetDtos.*;
-import com.budgetsmart.entity.*;
+import com.budgetsmart.dto.BudgetDtos.CategoryResponse;
+import com.budgetsmart.dto.BudgetDtos.ExpenseRequest;
+import com.budgetsmart.dto.BudgetDtos.ExpenseResponse;
+import com.budgetsmart.dto.BudgetDtos.MonthlySummary;
+import com.budgetsmart.entity.Category;
+import com.budgetsmart.entity.Expense;
+import com.budgetsmart.entity.User;
 import com.budgetsmart.exception.ResourceNotFoundException;
-import com.budgetsmart.repository.*;
+import com.budgetsmart.repository.CategoryRepository;
+import com.budgetsmart.repository.ExpenseRepository;
+import com.budgetsmart.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -35,51 +43,47 @@ public class ExpenseService {
 
     public ExpenseResponse create(ExpenseRequest req) {
         User user = currentUser();
-        Expense expense = Expense.builder()
+        Expense e = Expense.builder()
             .user(user)
             .amount(req.getAmount())
             .description(req.getDescription())
             .date(req.getDate() != null ? req.getDate() : LocalDate.now())
             .category(resolveCategory(req.getCategoryId(), user))
             .build();
-        return toDto(expenseRepository.save(expense));
+        return toDto(expenseRepository.save(e));
     }
 
     @Transactional(readOnly = true)
     public Page<ExpenseResponse> findAll(Pageable pageable) {
-        User user = currentUser();
-        return expenseRepository.findByUserId(user.getId(), pageable).map(this::toDto);
+        return expenseRepository.findByUserId(currentUser().getId(), pageable).map(this::toDto);
     }
 
     @Transactional(readOnly = true)
-    public ExpenseResponse findById(Long id) {
+    public ExpenseResponse findById(Integer id) {
+        User user = currentUser();
+        return toDto(expenseRepository.findById(id)
+            .filter(e -> e.getUser().getId().equals(user.getId()))
+            .orElseThrow(() -> new ResourceNotFoundException("Dépense non trouvée")));
+    }
+
+    public ExpenseResponse update(Integer id, ExpenseRequest req) {
         User user = currentUser();
         Expense e = expenseRepository.findById(id)
             .filter(ex -> ex.getUser().getId().equals(user.getId()))
             .orElseThrow(() -> new ResourceNotFoundException("Dépense non trouvée"));
-        return toDto(e);
+        if (req.getAmount()      != null) e.setAmount(req.getAmount());
+        if (req.getDescription() != null) e.setDescription(req.getDescription());
+        if (req.getDate()        != null) e.setDate(req.getDate());
+        if (req.getCategoryId()  != null) e.setCategory(resolveCategory(req.getCategoryId(), user));
+        return toDto(expenseRepository.save(e));
     }
 
-    public ExpenseResponse update(Long id, ExpenseRequest req) {
+    public void delete(Integer id) {
         User user = currentUser();
-        Expense expense = expenseRepository.findById(id)
-            .filter(e -> e.getUser().getId().equals(user.getId()))
+        Expense e = expenseRepository.findById(id)
+            .filter(ex -> ex.getUser().getId().equals(user.getId()))
             .orElseThrow(() -> new ResourceNotFoundException("Dépense non trouvée"));
-
-        if (req.getAmount()      != null) expense.setAmount(req.getAmount());
-        if (req.getDescription() != null) expense.setDescription(req.getDescription());
-        if (req.getDate()        != null) expense.setDate(req.getDate());
-        if (req.getCategoryId()  != null) expense.setCategory(resolveCategory(req.getCategoryId(), user));
-
-        return toDto(expenseRepository.save(expense));
-    }
-
-    public void delete(Long id) {
-        User user = currentUser();
-        Expense expense = expenseRepository.findById(id)
-            .filter(e -> e.getUser().getId().equals(user.getId()))
-            .orElseThrow(() -> new ResourceNotFoundException("Dépense non trouvée"));
-        expenseRepository.delete(expense);
+        expenseRepository.delete(e);
     }
 
     @Transactional(readOnly = true)
@@ -90,24 +94,19 @@ public class ExpenseService {
 
         BigDecimal total = expenseRepository.sumByUserIdAndDateBetween(user.getId(), start, end);
         List<Object[]> byCat = expenseRepository.sumByCategoryAndDateBetween(user.getId(), start, end);
-
         Map<String, BigDecimal> catMap = new LinkedHashMap<>();
-        for (Object[] row : byCat) {
-            catMap.put((String) row[0], (BigDecimal) row[1]);
-        }
+        for (Object[] row : byCat) catMap.put((String) row[0], (BigDecimal) row[1]);
 
         return MonthlySummary.builder()
             .year(year).month(month)
-            .totalExpenses(total)
-            .totalRevenues(BigDecimal.ZERO) // rempli par le controller si besoin
+            .totalExpenses(total != null ? total : BigDecimal.ZERO)
+            .totalRevenues(BigDecimal.ZERO)
             .balance(BigDecimal.ZERO)
             .expensesByCategory(catMap)
             .build();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private Category resolveCategory(Long catId, User user) {
+    private Category resolveCategory(Integer catId, User user) {
         if (catId == null) return null;
         return categoryRepository.findById(catId)
             .filter(c -> c.getUser().getId().equals(user.getId()))
@@ -121,7 +120,6 @@ public class ExpenseService {
                 .id(e.getCategory().getId())
                 .name(e.getCategory().getName())
                 .color(e.getCategory().getColor())
-                .icon(e.getCategory().getIcon())
                 .type(e.getCategory().getType())
                 .build();
         }

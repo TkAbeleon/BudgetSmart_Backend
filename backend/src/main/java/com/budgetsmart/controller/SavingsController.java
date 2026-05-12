@@ -27,24 +27,24 @@ public class SavingsController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<SavingsResponse> get(@PathVariable Long id) {
+    public ResponseEntity<SavingsResponse> get(@PathVariable Integer id) {
         return ResponseEntity.ok(savingsService.findById(id));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<SavingsResponse> update(@PathVariable Long id,
+    public ResponseEntity<SavingsResponse> update(@PathVariable Integer id,
                                                    @Valid @RequestBody SavingsRequest req) {
         return ResponseEntity.ok(savingsService.update(id, req));
     }
 
     @PostMapping("/{id}/add")
-    public ResponseEntity<SavingsResponse> addAmount(@PathVariable Long id,
+    public ResponseEntity<SavingsResponse> addAmount(@PathVariable Integer id,
                                                       @Valid @RequestBody SavingsAddRequest req) {
         return ResponseEntity.ok(savingsService.addAmount(id, req));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
         savingsService.delete(id);
         return ResponseEntity.noContent().build();
     }

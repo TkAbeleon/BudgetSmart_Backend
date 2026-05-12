@@ -12,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,65 +28,50 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final AuthenticationManager authenticationManager;
 
-    /** Inscription */
-    public AuthResponse register(RegisterRequest request) {
-        log.info("Inscription : {}", request.getEmail());
-
-        if (userRepository.existsByEmail(request.getEmail())) {
+    public AuthResponse register(RegisterRequest req) {
+        if (userRepository.existsByEmail(req.getEmail()))
             throw new ValidationException("Un compte existe déjà avec cet email");
-        }
+
+        // On accepte firstName+lastName OU name directement
+        String fullName = buildName(req.getFirstName(), req.getLastName(), req.getEmail());
 
         User user = User.builder()
-            .email(request.getEmail())
-            .password(passwordEncoder.encode(request.getPassword()))
-            .firstName(request.getFirstName())
-            .lastName(request.getLastName())
-            .phone(request.getPhone())
+            .email(req.getEmail())
+            .password(passwordEncoder.encode(req.getPassword()))
+            .name(fullName)
             .build();
 
-        User saved = userRepository.save(user);
-        log.info("Utilisateur créé : {}", saved.getEmail());
-        return buildResponse("Inscription réussie", saved);
+        return buildResponse("Inscription réussie", userRepository.save(user));
     }
 
-    /** Connexion */
     @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
-        log.info("Connexion : {}", request.getEmail());
-
+    public AuthResponse login(LoginRequest req) {
         try {
-            Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+            authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
             );
-            SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (BadCredentialsException e) {
             throw new UnauthorizedException("Identifiants incorrects");
         }
-
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(req.getEmail())
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-
         return buildResponse("Connexion réussie", user);
     }
 
-    /** Rafraîchissement du token */
     @Transactional(readOnly = true)
-    public AuthResponse refreshToken(RefreshTokenRequest request) {
-        if (!jwtProvider.validateToken(request.getRefreshToken())) {
-            throw new UnauthorizedException("Refresh token invalide ou expiré");
-        }
-        String email = jwtProvider.extractEmail(request.getRefreshToken());
+    public AuthResponse refreshToken(RefreshTokenRequest req) {
+        if (!jwtProvider.validateToken(req.getRefreshToken()))
+            throw new UnauthorizedException("Refresh token invalide");
+        String email = jwtProvider.extractEmail(req.getRefreshToken());
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
         return buildResponse("Token rafraîchi", user);
     }
 
-    /** Déconnexion (stateless JWT) */
     public void logout() {
         SecurityContextHolder.clearContext();
     }
 
-    /** Profil de l'utilisateur connecté */
     @Transactional(readOnly = true)
     public UserInfo getCurrentUserProfile() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -96,41 +80,32 @@ public class AuthService {
         return toUserInfo(user);
     }
 
-    /** Mise à jour du profil */
-    public UserInfo updateProfile(UpdateProfileRequest request) {
+    public UserInfo updateProfile(UpdateProfileRequest req) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-
-        if (request.getFirstName() != null) user.setFirstName(request.getFirstName());
-        if (request.getLastName()  != null) user.setLastName(request.getLastName());
-        if (request.getPhone()     != null) user.setPhone(request.getPhone());
-
+        String newName = buildName(req.getFirstName(), req.getLastName(), null);
+        if (newName != null) user.setName(newName);
         return toUserInfo(userRepository.save(user));
     }
 
-    /** Changement de mot de passe */
-    public void changePassword(ChangePasswordRequest request) {
+    public void changePassword(ChangePasswordRequest req) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-
-        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+        if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword()))
             throw new ValidationException("Ancien mot de passe incorrect");
-        }
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setPassword(passwordEncoder.encode(req.getNewPassword()));
         userRepository.save(user);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private AuthResponse buildResponse(String message, User user) {
-        String token        = jwtProvider.generateToken(user.getEmail());
-        String refreshToken = jwtProvider.generateRefreshToken(user.getEmail());
         return AuthResponse.builder()
             .message(message)
-            .token(token)
-            .refreshToken(refreshToken)
+            .token(jwtProvider.generateToken(user.getEmail()))
+            .refreshToken(jwtProvider.generateRefreshToken(user.getEmail()))
             .expiresIn(jwtProvider.getExpiration())
             .user(toUserInfo(user))
             .status("success")
@@ -139,14 +114,24 @@ public class AuthService {
     }
 
     public UserInfo toUserInfo(User user) {
+        // Décompose name en firstName/lastName pour la réponse
+        String[] parts = user.getName() != null ? user.getName().split(" ", 2) : new String[]{};
         return UserInfo.builder()
             .id(user.getId())
             .email(user.getEmail())
-            .firstName(user.getFirstName())
-            .lastName(user.getLastName())
-            .fullName(user.getFullName())
-            .phone(user.getPhone())
+            .firstName(parts.length > 0 ? parts[0] : null)
+            .lastName(parts.length > 1 ? parts[1] : null)
+            .fullName(user.getName())
             .createdAt(user.getCreatedAt())
             .build();
+    }
+
+    private String buildName(String firstName, String lastName, String fallback) {
+        if (firstName != null || lastName != null) {
+            return String.join(" ",
+                firstName != null ? firstName : "",
+                lastName  != null ? lastName  : "").trim();
+        }
+        return fallback;
     }
 }

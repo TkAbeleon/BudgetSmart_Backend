@@ -1,11 +1,13 @@
 package com.budgetsmart.service;
 
-import com.budgetsmart.dto.BudgetDtos.*;
-import com.budgetsmart.entity.*;
+import com.budgetsmart.dto.BudgetDtos.CategoryRequest;
+import com.budgetsmart.dto.BudgetDtos.CategoryResponse;
+import com.budgetsmart.entity.Category;
+import com.budgetsmart.entity.User;
 import com.budgetsmart.exception.ResourceNotFoundException;
-import com.budgetsmart.repository.*;
+import com.budgetsmart.repository.CategoryRepository;
+import com.budgetsmart.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -33,10 +34,8 @@ public class CategoryService {
         Category cat = Category.builder()
             .user(user)
             .name(req.getName())
-            .description(req.getDescription())
-            .color(req.getColor() != null ? req.getColor() : "#6366f1")
-            .icon(req.getIcon())
             .type(req.getType())
+            .color(req.getColor() != null ? req.getColor() : "#6366f1")
             .build();
         return toDto(categoryRepository.save(cat));
     }
@@ -50,21 +49,17 @@ public class CategoryService {
         return list.stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public CategoryResponse update(Long id, CategoryRequest req) {
+    public CategoryResponse update(Integer id, CategoryRequest req) {
         User user = currentUser();
         Category cat = categoryRepository.findById(id)
             .filter(c -> c.getUser().getId().equals(user.getId()))
             .orElseThrow(() -> new ResourceNotFoundException("Catégorie non trouvée"));
-
-        if (req.getName()        != null) cat.setName(req.getName());
-        if (req.getDescription() != null) cat.setDescription(req.getDescription());
-        if (req.getColor()       != null) cat.setColor(req.getColor());
-        if (req.getIcon()        != null) cat.setIcon(req.getIcon());
-
+        if (req.getName()  != null) cat.setName(req.getName());
+        if (req.getColor() != null) cat.setColor(req.getColor());
         return toDto(categoryRepository.save(cat));
     }
 
-    public void delete(Long id) {
+    public void delete(Integer id) {
         User user = currentUser();
         Category cat = categoryRepository.findById(id)
             .filter(c -> c.getUser().getId().equals(user.getId()))
@@ -76,9 +71,7 @@ public class CategoryService {
         return CategoryResponse.builder()
             .id(c.getId())
             .name(c.getName())
-            .description(c.getDescription())
             .color(c.getColor())
-            .icon(c.getIcon())
             .type(c.getType())
             .build();
     }

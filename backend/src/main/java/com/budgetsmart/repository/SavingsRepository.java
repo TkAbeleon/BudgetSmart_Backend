@@ -7,9 +7,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface SavingsRepository extends JpaRepository<Savings, Long> {
-
-    List<Savings> findByUserId(Long userId);
-
-    List<Savings> findByUserIdAndCompleted(Long userId, boolean completed);
+public interface SavingsRepository extends JpaRepository<Savings, Integer> {
+    List<Savings> findByUserId(Integer userId);
 }

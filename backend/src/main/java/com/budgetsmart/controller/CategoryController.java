@@ -22,19 +22,18 @@ public class CategoryController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CategoryResponse>> list(
-            @RequestParam(required = false) String type) {
+    public ResponseEntity<List<CategoryResponse>> list(@RequestParam(required = false) String type) {
         return ResponseEntity.ok(categoryService.findAll(type));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<CategoryResponse> update(@PathVariable Long id,
-                                                   @Valid @RequestBody CategoryRequest req) {
+    public ResponseEntity<CategoryResponse> update(@PathVariable Integer id,
+                                                    @Valid @RequestBody CategoryRequest req) {
         return ResponseEntity.ok(categoryService.update(id, req));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
         categoryService.delete(id);
         return ResponseEntity.noContent().build();
     }

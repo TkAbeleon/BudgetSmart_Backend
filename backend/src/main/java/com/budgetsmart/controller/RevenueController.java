@@ -22,26 +22,27 @@ public class RevenueController {
 
     @GetMapping
     public ResponseEntity<Page<RevenueResponse>> list(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "0")    int page,
+            @RequestParam(defaultValue = "20")   int size,
             @RequestParam(defaultValue = "date") String sortBy,
-            @RequestParam(defaultValue = "desc") String direction) {
-        Sort sort = direction.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+            @RequestParam(defaultValue = "desc") String dir) {
+        Sort sort = dir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
         return ResponseEntity.ok(revenueService.findAll(PageRequest.of(page, size, sort)));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<RevenueResponse> get(@PathVariable Long id) {
+    public ResponseEntity<RevenueResponse> get(@PathVariable Integer id) {
         return ResponseEntity.ok(revenueService.findById(id));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<RevenueResponse> update(@PathVariable Long id, @Valid @RequestBody RevenueRequest req) {
+    public ResponseEntity<RevenueResponse> update(@PathVariable Integer id,
+                                                   @Valid @RequestBody RevenueRequest req) {
         return ResponseEntity.ok(revenueService.update(id, req));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Integer id) {
         revenueService.delete(id);
         return ResponseEntity.noContent().build();
     }

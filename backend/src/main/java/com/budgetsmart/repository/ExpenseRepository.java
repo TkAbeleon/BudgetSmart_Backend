@@ -14,31 +14,23 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ExpenseRepository extends JpaRepository<Expense, Long> {
-
-    List<Expense> findByUserIdAndDateBetween(Long userId, LocalDate start, LocalDate end);
-
-    List<Expense> findByUserIdAndCategoryId(Long userId, Long categoryId);
+public interface ExpenseRepository extends JpaRepository<Expense, Integer> {
+    List<Expense> findByUserIdAndDateBetween(Integer userId, LocalDate start, LocalDate end);
+    List<Expense> findByUserIdAndCategoryId(Integer userId, Integer categoryId);
+    Page<Expense> findByUserId(Integer userId, Pageable pageable);
+    Optional<Expense> findFirstByUserIdOrderByDateDesc(Integer userId);
+    List<Expense> findTop10ByUserIdOrderByAmountDesc(Integer userId);
+    long countByUserIdAndDateBetween(Integer userId, LocalDate start, LocalDate end);
 
     @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e WHERE e.user.id = :userId AND e.date BETWEEN :start AND :end")
-    BigDecimal sumByUserIdAndDateBetween(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
+    BigDecimal sumByUserIdAndDateBetween(@Param("userId") Integer userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
     @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Expense e WHERE e.user.id = :userId AND e.category.id = :categoryId")
-    BigDecimal sumByUserIdAndCategoryId(@Param("userId") Long userId, @Param("categoryId") Long categoryId);
-
-    Page<Expense> findByUserId(Long userId, Pageable pageable);
-
-    List<Expense> findByUserIdAndCategoryIdAndDateBetween(Long userId, Long categoryId, LocalDate start, LocalDate end);
-
-    long countByUserIdAndDateBetween(Long userId, LocalDate start, LocalDate end);
-
-    Optional<Expense> findFirstByUserIdOrderByDateDesc(Long userId);
+    BigDecimal sumByUserIdAndCategoryId(@Param("userId") Integer userId, @Param("categoryId") Integer categoryId);
 
     @Query("SELECT COALESCE(AVG(e.amount), 0) FROM Expense e WHERE e.user.id = :userId AND e.date BETWEEN :start AND :end")
-    BigDecimal averageByUserIdAndDateBetween(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
-
-    List<Expense> findTop10ByUserIdOrderByAmountDesc(Long userId);
+    BigDecimal averageByUserIdAndDateBetween(@Param("userId") Integer userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
     @Query("SELECT c.name, COALESCE(SUM(e.amount), 0) FROM Expense e JOIN e.category c WHERE e.user.id = :userId AND e.date BETWEEN :start AND :end GROUP BY c.name ORDER BY SUM(e.amount) DESC")
-    List<Object[]> sumByCategoryAndDateBetween(@Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
+    List<Object[]> sumByCategoryAndDateBetween(@Param("userId") Integer userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 }

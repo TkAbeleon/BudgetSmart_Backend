@@ -7,11 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface CategoryRepository extends JpaRepository<Category, Long> {
-
-    List<Category> findByUserId(Long userId);
-
-    List<Category> findByUserIdAndType(Long userId, String type);
-
-    List<Category> findByUserIdAndActive(Long userId, boolean active);
+public interface CategoryRepository extends JpaRepository<Category, Integer> {
+    List<Category> findByUserId(Integer userId);
+    List<Category> findByUserIdAndType(Integer userId, String type);
 }

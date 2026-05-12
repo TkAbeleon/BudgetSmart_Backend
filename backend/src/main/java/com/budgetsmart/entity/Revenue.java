@@ -8,7 +8,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Entité Revenu - alignée avec la table SQL `revenues`
+ * Entité Revenue — alignée avec la table SQL locale `revenues`
+ * Colonnes : id (int), user_id, category_id, amount, description, date, created_at
  */
 @Entity
 @Table(name = "revenues")
@@ -20,7 +21,7 @@ public class Revenue {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -30,30 +31,21 @@ public class Revenue {
     @JoinColumn(name = "category_id")
     private Category category;
 
-    @Column(nullable = false, precision = 15, scale = 2)
+    @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 255)
     private String description;
 
-    @Column(name = "revenue_date", nullable = false)
+    @Column(nullable = false)
     private LocalDate date;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
         if (date == null) date = LocalDate.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
     }
 }

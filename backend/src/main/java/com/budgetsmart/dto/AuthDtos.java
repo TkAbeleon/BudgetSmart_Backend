@@ -3,7 +3,7 @@ package com.budgetsmart.dto;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
-import java.math.BigDecimal;
+
 import java.time.LocalDateTime;
 
 public class AuthDtos {
@@ -51,7 +51,7 @@ public class AuthDtos {
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class UserInfo {
-        private Long id;
+        private Integer id;
         private String firstName;
         private String lastName;
         private String fullName;

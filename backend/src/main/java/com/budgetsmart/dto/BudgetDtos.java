@@ -21,14 +21,13 @@ public class BudgetDtos {
         @Size(max = 500)
         private String description;
 
-        private Long categoryId;
-
+        private Integer categoryId;
         private LocalDate date;
     }
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class ExpenseResponse {
-        private Long id;
+        private Integer id;
         private BigDecimal amount;
         private String description;
         private LocalDate date;
@@ -47,14 +46,13 @@ public class BudgetDtos {
         @Size(max = 500)
         private String description;
 
-        private Long categoryId;
-
+        private Integer categoryId;
         private LocalDate date;
     }
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class RevenueResponse {
-        private Long id;
+        private Integer id;
         private BigDecimal amount;
         private String description;
         private LocalDate date;
@@ -70,11 +68,7 @@ public class BudgetDtos {
         @Size(max = 100)
         private String name;
 
-        @Size(max = 500)
-        private String description;
-
         private String color;
-        private String icon;
 
         @NotBlank(message = "Le type est obligatoire (EXPENSE ou REVENUE)")
         @Pattern(regexp = "^(EXPENSE|REVENUE)$", message = "Type invalide")
@@ -83,39 +77,10 @@ public class BudgetDtos {
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class CategoryResponse {
-        private Long id;
+        private Integer id;
         private String name;
-        private String description;
         private String color;
-        private String icon;
         private String type;
-    }
-
-    // ── Budget ────────────────────────────────────────────────────────────────
-
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
-    public static class BudgetRequest {
-        @NotNull(message = "Le montant limite est obligatoire")
-        @Positive
-        private BigDecimal limitAmount;
-
-        private Long categoryId;
-
-        private LocalDate startDate;
-        private LocalDate endDate;
-    }
-
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
-    public static class BudgetResponse {
-        private Long id;
-        private BigDecimal limitAmount;
-        private BigDecimal spent;
-        private BigDecimal remaining;
-        private double percentUsed;
-        private CategoryResponse category;
-        private LocalDate startDate;
-        private LocalDate endDate;
-        private boolean active;
     }
 
     // ── Savings ───────────────────────────────────────────────────────────────
@@ -135,7 +100,7 @@ public class BudgetDtos {
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class SavingsResponse {
-        private Long id;
+        private Integer id;
         private String goalName;
         private BigDecimal targetAmount;
         private BigDecimal currentAmount;
