@@ -38,9 +38,9 @@ public class Savings {
     @Column(name = "current_amount", precision = 12, scale = 2)
     private BigDecimal currentAmount = BigDecimal.ZERO;
 
-    /** Colonne réelle : deadline (pas target_date) */
-    @Column(name = "deadline")
-    private LocalDate deadline;
+    /** Colonne en base : target_date */
+    @Column(name = "target_date")
+    private LocalDate targetDate;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

@@ -38,7 +38,7 @@ public class SavingsService {
             .user(user)
             .name(req.getGoalName())
             .targetAmount(req.getTargetAmount())
-            .deadline(req.getTargetDate())
+            .targetDate(req.getTargetDate())
             .build();
         return toDto(savingsRepository.save(s));
     }
@@ -64,7 +64,7 @@ public class SavingsService {
             .orElseThrow(() -> new ResourceNotFoundException("Objectif non trouvé"));
         if (req.getGoalName()     != null) s.setName(req.getGoalName());
         if (req.getTargetAmount() != null) s.setTargetAmount(req.getTargetAmount());
-        if (req.getTargetDate()   != null) s.setDeadline(req.getTargetDate());
+        if (req.getTargetDate()   != null) s.setTargetDate(req.getTargetDate());
         return toDto(savingsRepository.save(s));
     }
 
@@ -102,7 +102,7 @@ public class SavingsService {
             .currentAmount(s.getCurrentAmount())
             .remaining(remaining)
             .progressPercent(Math.min(pct, 100.0))
-            .targetDate(s.getDeadline())
+            .targetDate(s.getTargetDate())
             .completed(s.isCompleted())
             .createdAt(s.getCreatedAt())
             .build();

@@ -7,11 +7,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Entité User — alignée exactement avec la table SQL locale `users`
- * Colonnes : id (int), name, email, password, monthly_budget, created_at
+ * Entité User — Hibernate crée/gère la table `users` automatiquement via ddl-auto=update.
  */
 @Entity
-@Table(name = "users")
+@Table(name = "users",
+    uniqueConstraints = @UniqueConstraint(columnNames = "email"))
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,7 +22,14 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "first_name", length = 100)
+    private String firstName;
+
+    @Column(name = "last_name", length = 100)
+    private String lastName;
+
+    /** Colonne de compatibilité — computed ou stockée séparément */
+    @Column(length = 200)
     private String name;
 
     @Column(unique = true, nullable = false, length = 150)
@@ -41,8 +48,25 @@ public class User {
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) createdAt = LocalDateTime.now();
+        // Synchroniser name depuis firstName+lastName
+        this.name = buildFullName();
     }
 
-    /** Commodité */
-    public String getFullName() { return name != null ? name : email; }
+    @PreUpdate
+    protected void onUpdate() {
+        this.name = buildFullName();
+    }
+
+    /** Retourne le nom complet (firstName + lastName ou email comme fallback) */
+    public String getFullName() {
+        String full = buildFullName();
+        return full != null && !full.isBlank() ? full : email;
+    }
+
+    private String buildFullName() {
+        if (firstName != null && lastName != null) return firstName + " " + lastName;
+        if (firstName != null) return firstName;
+        if (lastName  != null) return lastName;
+        return name;
+    }
 }

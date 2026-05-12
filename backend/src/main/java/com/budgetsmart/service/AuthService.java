@@ -32,13 +32,11 @@ public class AuthService {
         if (userRepository.existsByEmail(req.getEmail()))
             throw new ValidationException("Un compte existe déjà avec cet email");
 
-        // On accepte firstName+lastName OU name directement
-        String fullName = buildName(req.getFirstName(), req.getLastName(), req.getEmail());
-
         User user = User.builder()
             .email(req.getEmail())
             .password(passwordEncoder.encode(req.getPassword()))
-            .name(fullName)
+            .firstName(req.getFirstName())
+            .lastName(req.getLastName())
             .build();
 
         return buildResponse("Inscription réussie", userRepository.save(user));
@@ -84,8 +82,8 @@ public class AuthService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-        String newName = buildName(req.getFirstName(), req.getLastName(), null);
-        if (newName != null) user.setName(newName);
+        if (req.getFirstName() != null) user.setFirstName(req.getFirstName());
+        if (req.getLastName()  != null) user.setLastName(req.getLastName());
         return toUserInfo(userRepository.save(user));
     }
 
@@ -114,24 +112,20 @@ public class AuthService {
     }
 
     public UserInfo toUserInfo(User user) {
-        // Décompose name en firstName/lastName pour la réponse
-        String[] parts = user.getName() != null ? user.getName().split(" ", 2) : new String[]{};
         return UserInfo.builder()
             .id(user.getId())
             .email(user.getEmail())
-            .firstName(parts.length > 0 ? parts[0] : null)
-            .lastName(parts.length > 1 ? parts[1] : null)
-            .fullName(user.getName())
+            .firstName(user.getFirstName())
+            .lastName(user.getLastName())
+            .fullName(user.getFullName())
             .createdAt(user.getCreatedAt())
             .build();
     }
 
-    private String buildName(String firstName, String lastName, String fallback) {
-        if (firstName != null || lastName != null) {
-            return String.join(" ",
-                firstName != null ? firstName : "",
-                lastName  != null ? lastName  : "").trim();
-        }
+    private String buildName(String first, String last, String fallback) {
+        if (first != null || last != null)
+            return String.join(" ", first != null ? first : "",
+                               last  != null ? last  : "").trim();
         return fallback;
     }
 }
