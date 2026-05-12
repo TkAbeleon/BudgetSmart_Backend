@@ -57,6 +57,7 @@ public class AuthDtos {
         private String fullName;
         private String email;
         private String phone;
+        private java.math.BigDecimal monthlyBudget;
         private LocalDateTime createdAt;
     }
 
@@ -76,6 +77,11 @@ public class AuthDtos {
 
         @Size(max = 20)
         private String phone;
+
+        @Email(message = "Format d'email invalide")
+        private String email;
+
+        private java.math.BigDecimal monthlyBudget;
     }
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor

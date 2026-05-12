@@ -63,7 +63,37 @@
   "lastName": "Dupont",
   "fullName": "Alice Dupont",
   "email": "alice@example.com",
+  "monthlyBudget": 2500.00,
   "createdAt": "2025-05-11T12:00:00"
+}
+```
+
+### `PUT /api/auth/profile` — Mettre à jour le profil
+**Body** (Tous les champs sont optionnels)
+```json
+{
+  "firstName": "Alice (Modifié)",
+  "lastName": "Dupont",
+  "email": "alice.new@example.com",
+  "monthlyBudget": 3000.00
+}
+```
+**Réponse 200 OK** (Retourne le profil UserInfo mis à jour)
+
+### `PUT /api/auth/password` — Changer le mot de passe
+**Body**
+```json
+{
+  "oldPassword": "MonMotDePasse123!",
+  "newPassword": "MonNouveauMotDePasse456!"
+}
+```
+**Réponse 200 OK**
+```json
+{
+  "message": "Mot de passe changé avec succès",
+  "status": "success",
+  "timestamp": 1715000000000
 }
 ```
 

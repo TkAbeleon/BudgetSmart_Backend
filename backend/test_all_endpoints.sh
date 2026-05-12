@@ -58,6 +58,15 @@ check "POST /auth/login" "$LOGIN" "token"
 ME=$(curl -s -X GET "$API_URL/auth/me" -H "$AUTH")
 check "GET /auth/me" "$ME" "$EMAIL"
 
+UPD_PROFILE=$(curl -s -X PUT "$API_URL/auth/profile" -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"firstName\":\"Nouveau\",\"monthlyBudget\":3000.00}")
+check "PUT /auth/profile" "$UPD_PROFILE" "Nouveau"
+
+UPD_PWD=$(curl -s -X PUT "$API_URL/auth/password" -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"oldPassword\":\"$PASSWORD\",\"newPassword\":\"newpassword123!\"}")
+check "PUT /auth/password" "$UPD_PWD" "succès"
+PASSWORD="newpassword123!"
+
 # ── 2. CATÉGORIES ────────────────────────────────────────────
 blue "2. Catégories"
 
@@ -178,7 +187,7 @@ check "PUT /alerts/read-all" "$MARK_ALL" "204"
 blue "7. Chat IA (n8n Webhook / Local)"
 
 CHAT_STATUS=$(curl -s -X GET "$API_URL/chat/status" -H "$AUTH")
-check "GET /chat/status" "$CHAT_STATUS" "webhookConfigured"
+check "GET /chat/status" "$CHAT_STATUS" "n8nConnected"
 
 CHAT_MSG=$(curl -s -X POST "$API_URL/chat/message" -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"question":"Test de fonctionnement E2E"}')

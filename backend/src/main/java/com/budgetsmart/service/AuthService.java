@@ -33,11 +33,11 @@ public class AuthService {
             throw new ValidationException("Un compte existe déjà avec cet email");
 
         User user = User.builder()
-            .email(req.getEmail())
-            .password(passwordEncoder.encode(req.getPassword()))
-            .firstName(req.getFirstName())
-            .lastName(req.getLastName())
-            .build();
+                .email(req.getEmail())
+                .password(passwordEncoder.encode(req.getPassword()))
+                .firstName(req.getFirstName())
+                .lastName(req.getLastName())
+                .build();
 
         return buildResponse("Inscription réussie", userRepository.save(user));
     }
@@ -46,13 +46,12 @@ public class AuthService {
     public AuthResponse login(LoginRequest req) {
         try {
             authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
-            );
+                    new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword()));
         } catch (BadCredentialsException e) {
             throw new UnauthorizedException("Identifiants incorrects");
         }
         User user = userRepository.findByEmail(req.getEmail())
-            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
         return buildResponse("Connexion réussie", user);
     }
 
@@ -62,7 +61,7 @@ public class AuthService {
             throw new UnauthorizedException("Refresh token invalide");
         String email = jwtProvider.extractEmail(req.getRefreshToken());
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
         return buildResponse("Token rafraîchi", user);
     }
 
@@ -74,23 +73,29 @@ public class AuthService {
     public UserInfo getCurrentUserProfile() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
         return toUserInfo(user);
     }
 
     public UserInfo updateProfile(UpdateProfileRequest req) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-        if (req.getFirstName() != null) user.setFirstName(req.getFirstName());
-        if (req.getLastName()  != null) user.setLastName(req.getLastName());
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+        if (req.getFirstName() != null)
+            user.setFirstName(req.getFirstName());
+        if (req.getLastName() != null)
+            user.setLastName(req.getLastName());
+        if (req.getEmail() != null && !req.getEmail().isBlank())
+            user.setEmail(req.getEmail());
+        if (req.getMonthlyBudget() != null)
+            user.setMonthlyBudget(req.getMonthlyBudget());
         return toUserInfo(userRepository.save(user));
     }
 
     public void changePassword(ChangePasswordRequest req) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
         if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword()))
             throw new ValidationException("Ancien mot de passe incorrect");
         user.setPassword(passwordEncoder.encode(req.getNewPassword()));
@@ -101,31 +106,25 @@ public class AuthService {
 
     private AuthResponse buildResponse(String message, User user) {
         return AuthResponse.builder()
-            .message(message)
-            .token(jwtProvider.generateToken(user.getEmail()))
-            .refreshToken(jwtProvider.generateRefreshToken(user.getEmail()))
-            .expiresIn(jwtProvider.getExpiration())
-            .user(toUserInfo(user))
-            .status("success")
-            .timestamp(System.currentTimeMillis())
-            .build();
+                .message(message)
+                .token(jwtProvider.generateToken(user.getEmail()))
+                .refreshToken(jwtProvider.generateRefreshToken(user.getEmail()))
+                .expiresIn(jwtProvider.getExpiration())
+                .user(toUserInfo(user))
+                .status("success")
+                .timestamp(System.currentTimeMillis())
+                .build();
     }
 
     public UserInfo toUserInfo(User user) {
         return UserInfo.builder()
-            .id(user.getId())
-            .email(user.getEmail())
-            .firstName(user.getFirstName())
-            .lastName(user.getLastName())
-            .fullName(user.getFullName())
-            .createdAt(user.getCreatedAt())
-            .build();
-    }
-
-    private String buildName(String first, String last, String fallback) {
-        if (first != null || last != null)
-            return String.join(" ", first != null ? first : "",
-                               last  != null ? last  : "").trim();
-        return fallback;
+                .id(user.getId())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .fullName(user.getFullName())
+                .monthlyBudget(user.getMonthlyBudget())
+                .createdAt(user.getCreatedAt())
+                .build();
     }
 }
