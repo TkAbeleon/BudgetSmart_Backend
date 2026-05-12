@@ -1,36 +1,43 @@
-# ==========================================
-# Multi-stage Dockerfile for BudgetSmart Backend
-# ==========================================
-
-# Stage 1: Build
-FROM maven:3.9-eclipse-temurin-17-alpine AS builder
+# ─── Stage 1 : Build ───────────────────────────────────────────────────────
+FROM eclipse-temurin:17-jdk-alpine AS builder
 
 WORKDIR /app
 
-# Copy pom.xml and download dependencies
+# Copier les fichiers Maven
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+COPY .mvn/ .mvn/
+COPY mvnw .
 
-# Copy source code
-COPY src ./src
+# Télécharger les dépendances (layer cache)
+RUN chmod +x mvnw && ./mvnw dependency:go-offline -B 2>/dev/null || true
 
-# Build application
-RUN mvn clean package -DskipTests
+# Copier le code source et builder
+COPY src/ src/
+RUN ./mvnw clean package -DskipTests -B -q
 
-# Stage 2: Runtime
+# ─── Stage 2 : Runtime ─────────────────────────────────────────────────────
 FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
-# Copy JAR from builder stage
-COPY --from=builder /app/target/budgetsmart-backend-*.jar app.jar
+# Créer un utilisateur non-root
+RUN addgroup -S budgetsmart && adduser -S budgetsmart -G budgetsmart
 
-# Create non-root user
-RUN addgroup -S appuser && adduser -S appuser -G appuser
-USER appuser
+# Copier le JAR depuis le stage builder
+COPY --from=builder /app/target/*.jar app.jar
 
-# Expose port
+# Changer le propriétaire
+RUN chown budgetsmart:budgetsmart app.jar
+USER budgetsmart
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget -q --spider http://localhost:8080/api/health || exit 1
+
 EXPOSE 8080
 
-# Run application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
