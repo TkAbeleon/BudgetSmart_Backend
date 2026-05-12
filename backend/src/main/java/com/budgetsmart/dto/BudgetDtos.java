@@ -129,4 +129,21 @@ public class BudgetDtos {
         private BigDecimal balance;
         private Map<String, BigDecimal> expensesByCategory;
     }
+
+    // ── Alert ───────────────────────────────────────────────────────────────────────────
+
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class AlertResponse {
+        private Integer id;
+        private String level;       // WARNING, CRITICAL, MAX
+        private String message;
+        private boolean read;
+        private LocalDateTime createdAt;
+    }
+
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class AlertStatsResponse {
+        private long total;
+        private long unread;
+    }
 }

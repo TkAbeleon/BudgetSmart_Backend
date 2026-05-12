@@ -1,263 +1,318 @@
 package com.budgetsmart.service;
 
+import com.budgetsmart.dto.BudgetDtos.AlertResponse;
 import com.budgetsmart.dto.ChatDtos.*;
+import com.budgetsmart.entity.User;
+import com.budgetsmart.exception.ResourceNotFoundException;
+import com.budgetsmart.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Service de gestion des interactions de chat avec n8n
- * 
- * Traite les requêtes utilisateur et génère des réponses avec l'assistant IA
+ * Service Chat — Phase 6 : Intégration n8n
+ *
+ * Flux :
+ *   1. Frontend → POST /api/chat/message  (JWT requis)
+ *   2. ChatService construit le contexte financier réel de l'utilisateur
+ *   3. Appelle le webhook n8n avec le contexte + la question
+ *   4. n8n appelle Claude API et renvoie la réponse IA
+ *   5. Si n8n indisponible → fallback réponse locale
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatService {
 
-    @Value("${anthropic.api.key:}")
-    private String anthropicApiKey;
+    private final UserRepository       userRepository;
+    private final ExpenseRepository    expenseRepository;
+    private final RevenueRepository    revenueRepository;
+    private final SavingsRepository    savingsRepository;
+    private final AlertRepository      alertRepository;
+    private final RestTemplate         restTemplate;
 
     @Value("${n8n.webhook.url:http://localhost:5678/webhook/chat}")
     private String n8nWebhookUrl;
 
+    @Value("${n8n.api.key:}")
+    private String n8nApiKey;
+
+    // ── Endpoint principal : Frontend → Backend → n8n → Claude ───────────────
+
     /**
-     * Traiter une requête de chat
-     * @param request Requête de chat
-     * @return Réponse générée
+     * Traiter un message du frontend.
+     * Construit le contexte financier et appelle n8n.
+     */
+    public ChatResponse processMessage(String question) {
+        long t0 = System.currentTimeMillis();
+
+        User user = currentUser();
+        log.info("Chat message de userId={} : {}", user.getId(),
+                question.substring(0, Math.min(80, question.length())));
+
+        // 1. Construire le contexte financier enrichi
+        Map<String, Object> context = buildFinancialContext(user);
+
+        // 2. Construire le payload pour n8n
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId",   user.getId());
+        payload.put("userName", user.getFullName());
+        payload.put("query",    question);
+        payload.put("context",  context);
+        payload.put("language", "fr");
+        payload.put("timestamp", LocalDateTime.now().toString());
+
+        // 3. Appeler n8n (ou fallback local si n8n indisponible)
+        String aiResponse = callN8n(payload);
+
+        double elapsed = (System.currentTimeMillis() - t0) / 1000.0;
+        log.info("Chat traité en {}s pour userId={}", elapsed, user.getId());
+
+        return ChatResponse.builder()
+                .response(aiResponse)
+                .suggestions(buildSuggestions(context))
+                .timestamp(LocalDateTime.now().toString())
+                .processingTime(elapsed)
+                .sessionId(UUID.randomUUID().toString())
+                .metadata(Map.of(
+                    "userId",          user.getId(),
+                    "n8nCalled",       !n8nWebhookUrl.isEmpty(),
+                    "contextBuilt",    true,
+                    "totalExpenses",   context.getOrDefault("totalExpensesMonth", 0),
+                    "unreadAlerts",    context.getOrDefault("unreadAlerts", 0)
+                ))
+                .build();
+    }
+
+    /**
+     * Endpoint webhook : n8n → Backend (sans JWT).
+     * Utilisé pour que n8n puisse interroger les données utilisateur.
      */
     public ChatResponse processChatRequest(ChatRequest request) {
-        long startTime = System.currentTimeMillis();
-        
+        long t0 = System.currentTimeMillis();
+
+        // Construire une réponse locale si pas de contexte n8n
+        String response = generateFallbackResponse(request.getQuery(), request.getContext());
+        double elapsed  = (System.currentTimeMillis() - t0) / 1000.0;
+
+        return ChatResponse.builder()
+                .response(response)
+                .suggestions(List.of(
+                    "Analyser vos dépenses du mois",
+                    "Consulter vos alertes budgétaires",
+                    "Vérifier vos objectifs d'épargne"
+                ))
+                .timestamp(LocalDateTime.now().toString())
+                .processingTime(elapsed)
+                .sessionId(request.getSessionId())
+                .metadata(Map.of("source", "local_fallback"))
+                .build();
+    }
+
+    // ── Construction du contexte financier ────────────────────────────────────
+
+    Map<String, Object> buildFinancialContext(User user) {
+        Integer userId = user.getId();
+        LocalDate today    = LocalDate.now();
+        LocalDate firstDay = today.withDayOfMonth(1);
+        LocalDate lastDay  = today.withDayOfMonth(today.lengthOfMonth());
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+
+        // Dépenses du mois
+        BigDecimal totalExp = expenseRepository.sumByUserIdAndDateBetween(userId, firstDay, lastDay);
+        ctx.put("totalExpensesMonth", totalExp != null ? totalExp : BigDecimal.ZERO);
+
+        // Dépenses par catégorie
+        List<Object[]> byCat = expenseRepository.sumByCategoryAndDateBetween(userId, firstDay, lastDay);
+        Map<String, BigDecimal> catMap = new LinkedHashMap<>();
+        byCat.forEach(row -> catMap.put((String) row[0], (BigDecimal) row[1]));
+        ctx.put("expensesByCategory", catMap);
+
+        // Revenus du mois
+        BigDecimal totalRev = revenueRepository.sumByUserIdAndDateBetween(userId, firstDay, lastDay);
+        ctx.put("totalRevenuesMonth", totalRev != null ? totalRev : BigDecimal.ZERO);
+
+        // Solde du mois
+        BigDecimal exp = (BigDecimal) ctx.get("totalExpensesMonth");
+        BigDecimal rev = (BigDecimal) ctx.get("totalRevenuesMonth");
+        ctx.put("monthlyBalance", rev.subtract(exp));
+
+        // Objectifs d'épargne en cours
+        var savings = savingsRepository.findByUserId(userId);
+        ctx.put("savingsGoalsCount",    savings.size());
+        ctx.put("savingsGoalsInProgress",
+            savings.stream().filter(s -> !s.isCompleted()).count());
+
+        // Alertes non lues (dépassements budget générés par triggers)
+        long unread = alertRepository.countByUserIdAndIsReadFalse(userId);
+        ctx.put("unreadAlerts", unread);
+        if (unread > 0) {
+            List<String> alertMessages = alertRepository
+                .findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId)
+                .stream().limit(3)
+                .map(a -> "[" + a.getLevel() + "] " + a.getMessage())
+                .collect(Collectors.toList());
+            ctx.put("recentAlerts", alertMessages);
+        }
+
+        // Budget mensuel de l'utilisateur
+        if (user.getMonthlyBudget() != null) {
+            ctx.put("monthlyBudget", user.getMonthlyBudget());
+            BigDecimal remaining = user.getMonthlyBudget().subtract(exp);
+            ctx.put("remainingBudget", remaining);
+            ctx.put("budgetUsedPercent",
+                exp.doubleValue() / user.getMonthlyBudget().doubleValue() * 100);
+        }
+
+        ctx.put("currentMonth", today.getMonth().getDisplayName(
+            java.time.format.TextStyle.FULL, java.util.Locale.FRENCH));
+        ctx.put("currentYear", today.getYear());
+
+        return ctx;
+    }
+
+    // ── Appel n8n ─────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private String callN8n(Map<String, Object> payload) {
+        if (n8nWebhookUrl == null || n8nWebhookUrl.isBlank()) {
+            log.warn("n8n webhook URL non configurée — fallback local");
+            return generateFallbackResponse((String) payload.get("query"),
+                    (Map<String, Object>) payload.get("context"));
+        }
+
         try {
-            log.info("Traitement de la requête chat pour userId: {}, query: {}", 
-                    request.getUserId(), request.getQuery().substring(0, Math.min(50, request.getQuery().length())));
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (!n8nApiKey.isBlank()) {
+                headers.set("X-n8n-api-key", n8nApiKey);
+            }
 
-            // Analyser le type de requête
-            String queryType = analyzeQueryType(request.getQuery());
-            
-            // Générer la réponse basée sur la requête et le contexte
-            String response = generateResponse(request, queryType);
-            
-            // Générer des suggestions pertinentes
-            List<String> suggestions = generateSuggestions(request, queryType);
-            
-            // Créer les métadonnées
-            Map<String, Object> metadata = createMetadata(request, queryType);
-            
-            double processingTime = (System.currentTimeMillis() - startTime) / 1000.0;
-            
-            log.info("Requête traitée avec succès en {}ms pour userId: {}", 
-                    processingTime * 1000, request.getUserId());
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+            ResponseEntity<Map> resp = restTemplate.postForEntity(n8nWebhookUrl, request, Map.class);
 
-            return ChatResponse.builder()
-                    .response(response)
-                    .suggestions(suggestions)
-                    .timestamp(LocalDateTime.now().toString())
-                    .processingTime(processingTime)
-                    .sessionId(request.getSessionId())
-                    .metadata(metadata)
-                    .build();
+            if (resp.getStatusCode().is2xxSuccessful() && resp.getBody() != null) {
+                Object body = resp.getBody();
+                // n8n peut répondre sous différentes formes
+                if (body instanceof Map<?,?> map) {
+                    if (map.containsKey("response"))  return map.get("response").toString();
+                    if (map.containsKey("text"))      return map.get("text").toString();
+                    if (map.containsKey("message"))   return map.get("message").toString();
+                    if (map.containsKey("output"))    return map.get("output").toString();
+                }
+                return resp.getBody().toString();
+            }
+            log.warn("n8n a répondu avec le code {}", resp.getStatusCode());
 
-        } catch (Exception e) {
-            log.error("Erreur lors du traitement de la requête chat pour userId: {}", 
-                    request.getUserId(), e);
-            
-            double processingTime = (System.currentTimeMillis() - startTime) / 1000.0;
-            
-            return ChatResponse.builder()
-                    .response("Désolé, une erreur est survenue lors du traitement de votre demande. Veuillez réessayer.")
-                    .suggestions(Arrays.asList("Réessayer avec une formulation plus simple", "Contacter le support technique"))
-                    .timestamp(LocalDateTime.now().toString())
-                    .processingTime(processingTime)
-                    .sessionId(request.getSessionId())
-                    .metadata(Map.of("error", e.getMessage()))
-                    .build();
+        } catch (RestClientException e) {
+            log.warn("n8n indisponible ({}), utilisation du fallback local", e.getMessage());
         }
+
+        return generateFallbackResponse((String) payload.get("query"),
+                (Map<String, Object>) payload.get("context"));
     }
 
-    /**
-     * Analyser le type de requête
-     */
-    private String analyzeQueryType(String query) {
-        String lowerQuery = query.toLowerCase();
-        
-        if (lowerQuery.contains("économiser") || lowerQuery.contains("épargner") || lowerQuery.contains("économies")) {
-            return "savings_tips";
-        } else if (lowerQuery.contains("dépense") || lowerQuery.contains("dépensé") || lowerQuery.contains("coût")) {
-            return "expense_analysis";
-        } else if (lowerQuery.contains("revenu") || lowerQuery.contains("salaire") || lowerQuery.contains("gain")) {
-            return "revenue_analysis";
-        } else if (lowerQuery.contains("budget") || lowerQuery.contains("prévision") || lowerQuery.contains("plan")) {
-            return "budget_advice";
-        } else if (lowerQuery.contains("conseil") || lowerQuery.contains("aide") || lowerQuery.contains("comment")) {
-            return "general_advice";
-        } else {
-            return "general";
+    // ── Fallback réponse locale (sans IA) ─────────────────────────────────────
+
+    private String generateFallbackResponse(String query, Map<String, Object> ctx) {
+        if (query == null) return "Bonjour ! Comment puis-je vous aider ?";
+        String q = query.toLowerCase();
+
+        if (ctx != null) {
+            BigDecimal exp = toBigDecimal(ctx.get("totalExpensesMonth"));
+            BigDecimal rev = toBigDecimal(ctx.get("totalRevenuesMonth"));
+            Object alerts  = ctx.get("unreadAlerts");
+
+            if (q.contains("dépense") || q.contains("combien")) {
+                return String.format(
+                    "Ce mois-ci vous avez dépensé %s MGA. Vos revenus s'élèvent à %s MGA, " +
+                    "soit un solde de %s MGA.",
+                    exp, rev, rev.subtract(exp));
+            }
+            if (q.contains("alerte") || q.contains("budget")) {
+                long n = alerts instanceof Number ? ((Number) alerts).longValue() : 0L;
+                return n > 0
+                    ? String.format("Vous avez %d alerte(s) de dépassement de budget non lue(s). " +
+                        "Consultez /api/alerts/unread pour les détails.", n)
+                    : "Aucune alerte budgétaire active. Votre budget est sous contrôle !";
+            }
+            if (q.contains("épargne") || q.contains("objectif")) {
+                Object goals = ctx.get("savingsGoalsInProgress");
+                return String.format("Vous avez %s objectif(s) d'épargne en cours. " +
+                    "Continuez vos efforts !", goals);
+            }
         }
+
+        return "Je suis votre assistant budgétaire BudgetSmart. " +
+               "Posez-moi des questions sur vos dépenses, revenus, alertes ou objectifs d'épargne. " +
+               "Pour une analyse IA complète, connectez n8n via la variable N8N_WEBHOOK_URL.";
     }
 
-    /**
-     * Générer une réponse basée sur la requête
-     */
-    private String generateResponse(ChatRequest request, String queryType) {
-        Map<String, Object> context = request.getContext() != null ? request.getContext() : new HashMap<>();
-        
-        switch (queryType) {
-            case "savings_tips":
-                return generateSavingsTipsResponse(request, context);
-            case "expense_analysis":
-                return generateExpenseAnalysisResponse(request, context);
-            case "revenue_analysis":
-                return generateRevenueAnalysisResponse(request, context);
-            case "budget_advice":
-                return generateBudgetAdviceResponse(request, context);
-            case "general_advice":
-                return generateGeneralAdviceResponse(request, context);
-            default:
-                return generateGeneralResponse(request, context);
-        }
+    private BigDecimal toBigDecimal(Object v) {
+        if (v instanceof BigDecimal bd) return bd;
+        if (v instanceof Number n)     return BigDecimal.valueOf(n.doubleValue());
+        return BigDecimal.ZERO;
     }
 
-    /**
-     * Générer des suggestions basées sur la requête
-     */
-    private List<String> generateSuggestions(ChatRequest request, String queryType) {
+    // ── Suggestions contextuelles ─────────────────────────────────────────────
+
+    private List<String> buildSuggestions(Map<String, Object> ctx) {
         List<String> suggestions = new ArrayList<>();
-        
-        switch (queryType) {
-            case "savings_tips":
-                suggestions.addAll(Arrays.asList(
-                    "Créer un budget mensuel détaillé",
-                    "Automatiser vos épargnes",
-                    "Réduire les abonnements inutiles",
-                    "Comparer les prix avant d'acheter"
-                ));
-                break;
-            case "expense_analysis":
-                suggestions.addAll(Arrays.asList(
-                    "Suivre vos dépenses quotidiennes",
-                    "Analyser les catégories de dépenses",
-                    "Fixer des limites par catégorie",
-                    "Utiliser des applications de suivi"
-                ));
-                break;
-            case "revenue_analysis":
-                suggestions.addAll(Arrays.asList(
-                    "Explorer des sources de revenus additionnels",
-                    "Optimiser votre fiscalité",
-                    "Négocier votre salaire",
-                    "Développer des compétences valorisantes"
-                ));
-                break;
-            case "budget_advice":
-                suggestions.addAll(Arrays.asList(
-                    "Appliquer la règle 50/30/20",
-                    "Créer un fonds d'urgence",
-                    "Planifier les grosses dépenses",
-                    "Réviser votre budget mensuellement"
-                ));
-                break;
-            default:
-                suggestions.addAll(Arrays.asList(
-                    "Analyser vos finances personnelles",
-                    "Définir vos objectifs financiers",
-                    "Suivre vos progrès régulièrement",
-                    "Demander des conseils personnalisés"
-                ));
-        }
-        
+        long unread = ctx.containsKey("unreadAlerts")
+            ? ((Number) ctx.get("unreadAlerts")).longValue() : 0L;
+
+        if (unread > 0)
+            suggestions.add("Consulter mes " + unread + " alerte(s) non lue(s)");
+
+        Object remaining = ctx.get("remainingBudget");
+        if (remaining instanceof BigDecimal bd && bd.compareTo(BigDecimal.ZERO) < 0)
+            suggestions.add("Budget dépassé — réduire les dépenses non essentielles");
+
+        suggestions.add("Voir le résumé mensuel complet");
+        suggestions.add("Ajouter un objectif d'épargne");
+        suggestions.add("Analyser les dépenses par catégorie");
+
         return suggestions;
     }
 
-    /**
-     * Créer les métadonnées de la réponse
-     */
-    private Map<String, Object> createMetadata(ChatRequest request, String queryType) {
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("queryType", queryType);
-        metadata.put("userId", request.getUserId());
-        metadata.put("language", request.getLanguage());
-        metadata.put("hasContext", request.getContext() != null);
-        
-        if (request.getContext() != null) {
-            Map<String, Object> context = request.getContext();
-            if (context.containsKey("totalExpenses")) {
-                metadata.put("totalExpenses", context.get("totalExpenses"));
-            }
-            if (context.containsKey("totalRevenues")) {
-                metadata.put("totalRevenues", context.get("totalRevenues"));
-            }
-        }
-        
-        return metadata;
-    }
+    // ── Statut du service ─────────────────────────────────────────────────────
 
-    // Méthodes de génération de réponses spécifiques
-    
-    private String generateSavingsTipsResponse(ChatRequest request, Map<String, Object> context) {
-        return "Pour économiser plus efficacement, je vous recommande de commencer par analyser vos dépenses actuelles. " +
-               "Identifiez les catégories où vous pouvez réduire les coûts, comme les abonnements non essentiels ou " +
-               "les sorties fréquentes. Mettez en place un virement automatique vers un compte épargne dès " +
-               "la réception de votre salaire. Fixez-vous des objectifs réalistes et suivez vos progrès " +
-               "régulièrement pour rester motivé.";
-    }
-
-    private String generateExpenseAnalysisResponse(ChatRequest request, Map<String, Object> context) {
-        return "L'analyse de vos dépenses est essentielle pour une bonne gestion financière. " +
-               "Je vous conseille de classer vos dépenses par catégories (logement, alimentation, transport, loisirs, etc.) " +
-               "et de suivre leur évolution mensuelle. Identifiez les dépenses récurrentes et celles qui peuvent être " +
-               "optimisées. N'hésitez pas à comparer vos dépenses avec celles des mois précédents pour détecter " +
-               "les tendances et ajuster votre budget en conséquence.";
-    }
-
-    private String generateRevenueAnalysisResponse(ChatRequest request, Map<String, Object> context) {
-        return "L'analyse de vos revenus vous aidera à mieux planifier votre avenir financier. " +
-               "Évaluez la stabilité de vos revenus actuels et explorez des opportunités d'augmentation, " +
-               "que ce soit par le développement de compétences complémentaires, la négociation salariale, " +
-               "ou la création de sources de revenus passifs. N'oubliez pas de diversifier vos sources " +
-               "de revenus pour réduire les risques et augmenter votre sécurité financière.";
-    }
-
-    private String generateBudgetAdviceResponse(ChatRequest request, Map<String, Object> context) {
-        return "Pour un budget efficace, appliquez la méthode 50/30/20 : 50% pour les besoins essentiels, " +
-               "30% pour les envies et 20% pour l'épargne. Commencez par lister tous vos revenus et dépenses, " +
-               "puis fixez des limites réalistes par catégorie. Prévoyez un fonds d'urgence de 3-6 mois " +
-               "de dépenses et ajustez votre budget chaque mois en fonction de vos objectifs et des " +
-               "changements dans votre situation.";
-    }
-
-    private String generateGeneralAdviceResponse(ChatRequest request, Map<String, Object> context) {
-        return "La gestion financière personnelle demande discipline et régularité. " +
-               "Commencez par définir clairement vos objectifs financiers à court, moyen et long terme. " +
-               "Tenez un registre précis de toutes vos transactions et révisez votre situation " +
-               "financière mensuellement. N'hésitez pas à vous former continuellement sur la gestion " +
-               "financière et à chercher des conseils personnalisés lorsque nécessaire.";
-    }
-
-    private String generateGeneralResponse(ChatRequest request, Map<String, Object> context) {
-        return "Je suis votre assistant financier personnel. Je peux vous aider à analyser vos dépenses, " +
-               "optimiser votre budget, trouver des économies, ou vous donner des conseils financiers personnalisés. " +
-               "N'hésitez pas à me poser des questions spécifiques sur votre situation financière ou " +
-               "à me demander des conseils pour atteindre vos objectifs.";
-    }
-
-    /**
-     * Obtenir le statut du service de chat
-     */
     public ChatStatusResponse getServiceStatus() {
+        boolean n8nOk = false;
+        if (!n8nWebhookUrl.isBlank()) {
+            try {
+                restTemplate.headForHeaders(n8nWebhookUrl);
+                n8nOk = true;
+            } catch (Exception ignored) {}
+        }
         return ChatStatusResponse.builder()
                 .status("active")
-                .version("1.0.0")
+                .version("2.0.0")
                 .lastActivity(LocalDateTime.now())
-                .totalRequestsToday(42L) // À remplacer par une vraie métrique
-                .averageResponseTime(1.2)
-                .n8nConnected(true)
-                .claudeApiStatus(anthropicApiKey.isEmpty() ? "not_configured" : "configured")
+                .totalRequestsToday(0L)
+                .averageResponseTime(0.5)
+                .n8nConnected(n8nOk)
+                .claudeApiStatus(n8nOk ? "via_n8n" : "not_connected")
                 .build();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private User currentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 }
