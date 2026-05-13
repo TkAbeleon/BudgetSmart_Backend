@@ -14,17 +14,17 @@ if ! command -v java &> /dev/null; then
     exit 1
 fi
 
-# 2. Vérification de Maven (ou utilisation du wrapper)
-if [ -f "./mvnw" ]; then
-    echo "📦 Utilisation du Maven Wrapper..."
+# 2. Détermination de la commande Maven
+if command -v mvn &> /dev/null; then
+    echo "📦 Utilisation du Maven système..."
+    MVN_CMD="mvn"
+elif [ -f "./mvnw" ]; then
+    echo "📦 Utilisation du Maven Wrapper (système non trouvé)..."
     MVN_CMD="./mvnw"
     chmod +x mvnw
 else
-    if ! command -v mvn &> /dev/null; then
-        echo "❌ Maven n'est pas installé et mvnw est absent."
-        exit 1
-    fi
-    MVN_CMD="mvn"
+    echo "❌ Maven n'est pas installé et mvnw est absent."
+    exit 1
 fi
 
 # 3. Compilation et packaging
