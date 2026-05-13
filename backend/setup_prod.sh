@@ -18,13 +18,25 @@ fi
 if command -v mvn &> /dev/null; then
     echo "📦 Utilisation du Maven système..."
     MVN_CMD="mvn"
-elif [ -f "./mvnw" ]; then
-    echo "📦 Utilisation du Maven Wrapper (système non trouvé)..."
-    MVN_CMD="./mvnw"
-    chmod +x mvnw
 else
-    echo "❌ Maven n'est pas installé et mvnw est absent."
-    exit 1
+    echo "📦 Vérification du Maven Wrapper..."
+    WRAPPER_JAR=".mvn/wrapper/maven-wrapper.jar"
+    if [ ! -f "$WRAPPER_JAR" ]; then
+        echo "📥 Téléchargement du maven-wrapper.jar manquant..."
+        mkdir -p .mvn/wrapper
+        # Tentative de téléchargement (URL standard Apache)
+        curl -L -s -o "$WRAPPER_JAR" https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper/3.2.0/maven-wrapper-3.2.0.jar || \
+        curl -L -s -o "$WRAPPER_JAR" https://repo.maven.apache.org/maven2/io/takari/maven-wrapper/0.7.7/maven-wrapper-0.7.7.jar
+    fi
+    
+    if [ -f "./mvnw" ]; then
+        echo "📦 Utilisation du Maven Wrapper..."
+        MVN_CMD="./mvnw"
+        chmod +x mvnw
+    else
+        echo "❌ Maven n'est pas installé et mvnw est absent."
+        exit 1
+    fi
 fi
 
 # 3. Compilation et packaging
