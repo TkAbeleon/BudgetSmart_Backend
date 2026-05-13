@@ -1,66 +1,35 @@
 #!/bin/bash
 
-# ==========================================
-# BudgetSmart Backend - Simple Start Script
-# ==========================================
-# Starts the application with PostgreSQL system database
-# Usage: ./start.sh [dev|prod]
+# ============================================================
+# BudgetSmart — Script de démarrage automatique (Alwaysdata)
+# ============================================================
 
-set -e
-
-ENV=${1:-dev}
-
-echo "🚀 Starting BudgetSmart Backend ($ENV)"
-echo ""
-
-# Load environment
-if [ ! -f .env ]; then
-    echo "❌ .env file not found"
-    echo "   Run: ./install-prod.sh first"
+# 1. Chargement des variables d'environnement
+if [ -f .env ]; then
+    echo "📂 Chargement de la configuration .env..."
+    # Utilisation d'une méthode robuste qui supporte les caractères spéciaux (Supabase password)
+    set -a
+    source .env
+    set +a
+else
+    echo "❌ Erreur : Fichier .env manquant."
     exit 1
 fi
 
-export $(grep -v '^#' .env | xargs)
-
-# ==========================================
-# 1. Check PostgreSQL
-# ==========================================
-echo "✓ Checking PostgreSQL..."
-
-if ! psql -h "$DB_HOST" -U "$DB_USERNAME" -d "$DB_NAME" -c "SELECT 1" &> /dev/null; then
-    echo "❌ Cannot connect to PostgreSQL"
-    echo "   Database: $DB_NAME @ $DB_HOST:$DB_PORT"
-    echo "   User: $DB_USERNAME"
+# 2. Vérification du JAR
+JAR_FILE="target/budgetsmart-1.0.0.jar"
+if [ ! -f "$JAR_FILE" ]; then
+    echo "❌ Erreur : $JAR_FILE non trouvé. Lancez ./setup_prod.sh d'abord."
     exit 1
 fi
 
-echo "✅ PostgreSQL connected"
-echo ""
+# 3. Lancement de l'application (Mode Non-Interactif)
+echo "🚀 Lancement de BudgetSmart Backend..."
+echo "📊 Connexion à : $DB_HOST"
 
-# ==========================================
-# 2. Check JAR
-# ==========================================
-echo "✓ Checking application JAR..."
-
-JAR_FILE=$(find target -name "*.jar" -type f | head -1)
-if [ -z "$JAR_FILE" ]; then
-    echo "❌ JAR file not found"
-    echo "   Run: ./mvnw package first"
-    exit 1
-fi
-
-echo "✅ JAR found: $JAR_FILE"
-echo ""
-
-# ==========================================
-# 3. Start application
-# ==========================================
-echo "════════════════════════════════════════════════════════════════"
-echo "  🚀 BudgetSmart Backend"
-echo "  Port: $APP_PORT"
-echo "  Database: $DB_NAME @ $DB_HOST:$DB_PORT"
-echo "  Profile: $ENV"
-echo "════════════════════════════════════════════════════════════════"
-echo ""
-
-java -Dspring.profiles.active="$ENV" -jar "$JAR_FILE"
+# On utilise les variables d'environnement déjà chargées
+# Spring Boot les détectera automatiquement
+java -XX:+UseContainerSupport \
+     -XX:MaxRAMPercentage=75.0 \
+     -Djava.security.egd=file:/dev/./urandom \
+     -jar "$JAR_FILE"
