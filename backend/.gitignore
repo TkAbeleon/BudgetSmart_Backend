@@ -14,7 +14,7 @@
 # Maven
 target/
 *.class
-*.jar
+#*.jar
 *.war
 *.nar
 *.zip
