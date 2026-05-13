@@ -1,10 +1,10 @@
-# 📡 Contrat API REST — BudgetSmart (Implémentation Actuelle)
+# 📡 Contrat API REST — BudgetSmart (Implémentation de Production)
 
 ## Conventions générales
 
-- **Base URL** : `http://localhost:8080/api`
+- **Base URL** : `https://budgetsmart-backend.onrender.com/api`
 - **Format** : JSON
-- **Auth** : Header `Authorization: Bearer <JWT_TOKEN>` (sauf auth endpoints)
+- **Auth** : Header `Authorization: Bearer <JWT_TOKEN>` (sauf endpoints publics)
 - **Dates** : ISO 8601 — `YYYY-MM-DD`
 - **Montants** : Décimal
 
@@ -12,7 +12,35 @@
 
 ---
 
-## 1. Authentification
+## 🛠️ Endpoints de Santé et Info (Publics)
+
+### `GET /api/health` — Santé de l'API
+Endpoint de monitoring pour vérifier que l'application fonctionne correctement.
+**Réponse 200 OK**
+```json
+{
+  "application": "BudgetSmart",
+  "version": "1.0.0", 
+  "status": "UP",
+  "timestamp": 1778551774976
+}
+```
+
+### `GET /api/info` — Informations Système
+**Réponse 200 OK**
+```json
+{
+  "name": "BudgetSmart",
+  "version": "1.0.0",
+  "description": "Système de Gestion de Budget Intelligent",
+  "java_version": "21.0.10",
+  "os_name": "Linux"
+}
+```
+
+---
+
+## 🔐 1. Authentification
 
 ### `POST /api/auth/register` — Inscription
 **Body**
@@ -99,7 +127,7 @@
 
 ---
 
-## 2. Catégories
+## 📂 2. Catégories
 
 ### `GET /api/categories` — Liste des catégories
 **Query params** : `?type=EXPENSE` ou `?type=REVENUE` (optionnel)
@@ -127,7 +155,7 @@
 
 ---
 
-## 3. Dépenses
+## 💸 3. Dépenses
 
 ### `GET /api/expenses` — Liste paginée
 **Query params** : `page`, `size`
@@ -179,7 +207,7 @@
 
 ---
 
-## 4. Revenus
+## 💰 4. Revenus
 
 Structure identique aux Dépenses.
 - `GET /api/revenues`
@@ -190,7 +218,7 @@ Structure identique aux Dépenses.
 
 ---
 
-## 5. Épargne
+## 🏦 5. Épargne
 
 ### `GET /api/savings` — Liste des objectifs
 **Réponse 200 OK**
@@ -231,7 +259,7 @@ Structure identique aux Dépenses.
 
 ---
 
-## 6. Alertes (Triggers PostgreSQL)
+## ⚠️ 6. Alertes (Triggers PostgreSQL)
 
 ### `GET /api/alerts` — Toutes les alertes
 ### `GET /api/alerts/unread` — Alertes non lues
@@ -257,13 +285,9 @@ Structure identique aux Dépenses.
 }
 ```
 
-### `PUT /api/alerts/{id}/read` — Marquer une alerte lue
-### `PUT /api/alerts/read-all` — Tout marquer lu (204 No Content)
-### `DELETE /api/alerts/{id}` — Supprimer (204 No Content)
-
 ---
 
-## 7. Chat IA (n8n Integration)
+## 🤖 7. Chat IA (n8n Integration)
 
 ### `POST /api/chat/message` — Poser une question à l'IA
 **Body**
@@ -300,3 +324,39 @@ Structure identique aux Dépenses.
   "claudeApiStatus": "via_n8n"
 }
 ```
+
+### `POST /api/chat/webhook/n8n` — Webhook Entrant (pour n8n)
+**Accès** : Public (Sécurisé par clé API n8n dans le header `X-n8n-api-key`)
+**Body**
+```json
+{
+  "query": "Question...",
+  "userId": 1,
+  "context": { ... }
+}
+```
+
+---
+
+## 📖 8. Documentation Interactive (Swagger)
+
+**URL** : `https://budgetsmart-backend.onrender.com/api/swagger-ui.html`
+
+---
+
+## ⚙️ 9. Variables d'Environnement (Configuration)
+
+Pour l'intégration n8n, configurez ces variables dans `.env` :
+
+```bash
+# Configuration n8n
+N8N_WEBHOOK_URL=https://rtsikynyantsa-jerymotro-pipeline.hf.space/webhook/a0951c35-d2ee-4c99-8042-39e1053abbfd
+N8N_API_KEY=votre-clé-api-n8n-secrète
+N8N_TIMEOUT=30000
+
+# Configuration Claude API (utilisée par n8n)
+ANTHROPIC_API_KEY=sk-ant-votre-clé-anthropic
+```
+
+---
+*Dernière mise à jour : 13 Mai 2026*
